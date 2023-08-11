@@ -119,14 +119,14 @@ With 8 bytes (called a `double`). The first bit is used to represent the sign of
 The formula for calculating the value of a `double` from its sign, exponent, and mantissa can be found at [this wikipedia article](https://en.wikipedia.org/wiki/Double-precision_floating-point_format).
 
 ```lua
-local y = Squash.float.ser(174302.923957475339573, 4)
+local y = Squash.number.ser(174302.923957475339573, 4)
 print(y) -- ╗7*H
-print(Squash.float.des(y, 4)) -- 174302.921875
+print(Squash.number.des(y, 4)) -- 174302.921875
 ```
 ```lua
-local y = Squash.float.ser(-17534840302.923957475339573, 8)
+local y = Squash.number.ser(-17534840302.923957475339573, 8)
 print(y) -- "▓╗╖íT►┬
-print(Squash.float.des(y, 8)) -- -17534840302.923958
+print(Squash.number.des(y, 8)) -- -17534840302.923958
 ```
 
 ## Strings
