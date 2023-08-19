@@ -357,15 +357,34 @@ local desArrayVectorNoCoding = function<T>(deserializer: VectorNoCodingSerDes<T>
 	end
 end
 
-local tau = 2 * math.pi
+local pi = math.pi
+local eta = pi / 2
+local tau = 2 * pi
+
 local angleRatio = 65536 / tau
 
+--- Used to serialize angles in the range [0, tau) with 2 bytes
 local serAngle = function(x: number): string
 	return Squash.uint.ser(x % tau * angleRatio, 2)
+	-- --? https://en.wikipedia.org/wiki/Half-precision_floating-point_format
+	-- local decimal = (x / tau) % 1
+	-- if decimal == 0 then
+	-- 	return '\0\0'
+	-- end
+	-- local rawExponent = math.floor(math.log(decimal, 2))
+	-- local exponent = if rawExponent == -32 then 1 else rawExponent + 32
+	-- local float16 = exponent * 2048 + math.floor(2048 * (decimal * 2 ^ -rawExponent - if exponent == 1 then 0 else 1))
+	-- return string.char(math.floor(float16 / 256), float16 % 256)
 end
 
+--- Used to deserialize angles in the range [0, tau) from 2 bytes
 local desAngle = function(y: string): number
 	return Squash.uint.des(y, 2) / angleRatio
+	-- --? https://en.wikipedia.org/wiki/Half-precision_floating-point_format
+	-- local highByte, lowByte = string.byte(y, 1, 2)
+	-- local exponent = math.floor((highByte * 256 + lowByte) / 2048)
+	-- local mantissa = (highByte * 256 + lowByte) % 2048
+	-- return tau * 2 ^ (exponent - 32) * (mantissa / 2048 + if exponent == 0 then 0 else 1)
 end
 
 local getBitSize = function(x: number): number
@@ -390,10 +409,73 @@ for _, enum in enumData.items do
 	enumItemData[enum] = getItemData(enum:GetEnumItems() :: { EnumItem })
 end
 
-local desEnumItem = function<T>(y: string, offset: number, enum: Enum): (number, EnumItem)
+local desEnumItem = function(y: string, offset: number, enum: Enum): (number, EnumItem)
 	local enumData = enumItemData[enum]
 	local enumItemId = Squash.uint.des(string.sub(y, offset, offset + enumData.bytes - 1), enumData.bytes)
 	return offset + enumData.bytes, enumData.items[enumItemId]
+end
+
+local rotationToByte = {
+	[Vector3.new(0, 0, 0)] = 0xff,
+	[Vector3.new(eta, 0, 0)] = 0x03,
+	[Vector3.new(0, pi, pi)] = 0x05,
+	[Vector3.new(-eta, 0, 0)] = 0x06,
+	[Vector3.new(0, eta, eta)] = 0x07,
+	[Vector3.new(0, eta, eta)] = 0x09,
+	[Vector3.new(0, 0, eta)] = 0x0a,
+	[Vector3.new(0, -eta, eta)] = 0x0c,
+	[Vector3.new(-eta, -eta, 0)] = 0x0d,
+	[Vector3.new(0, -eta, 0)] = 0x0e,
+	[Vector3.new(eta, -eta, 0)] = 0x10,
+	[Vector3.new(0, eta, pi)] = 0x11,
+	[Vector3.new(0, pi, 0)] = 0x14,
+	[Vector3.new(-eta, -pi, 0)] = 0x15,
+	[Vector3.new(0, 0, pi)] = 0x17,
+	[Vector3.new(eta, pi, 0)] = 0x18,
+	[Vector3.new(0, 0, -eta)] = 0x19,
+	[Vector3.new(0, -eta, -eta)] = 0x1b,
+	[Vector3.new(0, -pi, -eta)] = 0x1c,
+	[Vector3.new(0, eta, -eta)] = 0x1e,
+	[Vector3.new(eta, eta, 0)] = 0x1f,
+	[Vector3.new(0, eta, 0)] = 0x20,
+	[Vector3.new(-eta, eta, 0)] = 0x22,
+	[Vector3.new(0, -eta, pi)] = 0x23,
+}
+local byteToRotation = {}
+for rotation, byte in rotationToByte do
+	byteToRotation[byte] = rotation
+end
+
+local positionToByte = {
+	-- [Vector3.new(0, 0, 0)] = 0x00,
+	[Vector3.new(1, 0, 0)] = 0x01,
+	[Vector3.new(0, 1, 0)] = 0x02,
+	[Vector3.new(0, 0, 1)] = 0x03,
+	[Vector3.new(-1, 0, 0)] = 0x04,
+	[Vector3.new(0, -1, 0)] = 0x05,
+	[Vector3.new(0, 0, -1)] = 0x06,
+	[Vector3.new(1, 1, 0)] = 0x07,
+	[Vector3.new(1, 0, 1)] = 0x08,
+	[Vector3.new(0, 1, 1)] = 0x09,
+	[Vector3.new(-1, -1, 0)] = 0x0a,
+	[Vector3.new(-1, 0, -1)] = 0x0b,
+	[Vector3.new(0, -1, -1)] = 0x0c,
+	[Vector3.new(1, -1, 0)] = 0x0d,
+	[Vector3.new(1, 0, -1)] = 0x0e,
+	[Vector3.new(0, 1, -1)] = 0x0f,
+	[Vector3.new(-1, 1, 0)] = 0x10,
+	[Vector3.new(-1, 0, 1)] = 0x11,
+	[Vector3.new(0, -1, 1)] = 0x12,
+	[Vector3.new(1, 1, 1)] = 0x13,
+	[Vector3.new(-1, -1, -1)] = 0x14,
+	[Vector3.new(1, -1, -1)] = 0x15,
+	[Vector3.new(-1, 1, -1)] = 0x16,
+	[Vector3.new(-1, -1, 1)] = 0x17,
+}
+
+local byteToPosition = {}
+for position, byte in positionToByte do
+	byteToPosition[byte] = position
 end
 
 local packBits = function(x: { number }, bits: number): string
@@ -1038,15 +1120,37 @@ Squash.CFrame = {}
 	@param serdes NumberSerDes?
 	@param posBytes Bytes?
 	@return string
+
+	Has many special cases for common rotations, such as 90 degree rotations or 0's. Covers more special cases than Roblox does.
+	Can be 0 bytes, 1 byte, 2 bytes, 6 bytes, 7 bytes, 3 * posBytes + 1 bytes, and 3 * posBytes + 6 bytes.
 ]=]
 Squash.CFrame.ser = function(x: CFrame, serdes: NumberSerDes?, posBytes: Bytes?): string
-	local ser = if serdes then serdes.ser else Squash.int.ser :: NumberSer
-	local posBytes = posBytes or 4
+	if x == CFrame.identity then
+		return ''
+	end
 
-	local rx, ry, rz = x:ToEulerAnglesYXZ()
-	local px, py, pz = x.Position.X, x.Position.Y, x.Position.Z
+	local ser = if serdes then serdes.ser else Squash.number.ser :: NumberSer
 
-	return serAngle(rx) .. serAngle(ry) .. serAngle(rz) .. ser(px, posBytes) .. ser(py, posBytes) .. ser(pz, posBytes)
+	local p
+	if x.Position == Vector3.zero then
+		p = ''
+	else
+		local positionByte = positionToByte[x.Position]
+		p = if positionByte
+			then string.char(positionByte)
+			else ser(x.Position.X, posBytes) .. ser(x.Position.Y, posBytes) .. ser(x.Position.Z, posBytes)
+	end
+
+	local r
+	if x.Rotation == CFrame.identity then
+		r = if posBytes ~= 1 then string.char(0xff) else ''
+	else
+		local rx, ry, rz = x:ToEulerAnglesYXZ()
+		local rotationByte = rotationToByte[Vector3.new(rx, ry, rz)]
+		r = if rotationByte then string.char(rotationByte) else serAngle(rx) .. serAngle(ry) .. serAngle(rz)
+	end
+
+	return p .. r
 end
 
 --[=[
@@ -1057,19 +1161,44 @@ end
 	@param posBytes number?
 	@return CFrame
 ]=]
-Squash.CFrame.des = function(y: string, serdes: NumberSerDes?, posBytes: number?): CFrame
-	local des = if serdes then serdes.des else Squash.int.des :: NumberDes
+function Squash.CFrame.des(y: string, serdes: NumberSerDes?, posBytes: number?)
+	if y == '' then
+		return CFrame.identity
+	end
+
+	local length = #y
+	if length == 1 then
+		local rot = byteToRotation[string.byte(y)]
+		return CFrame.fromEulerAnglesYXZ(rot.X, rot.Y, rot.Z)
+	end
+
+	if length == 2 then
+		local p, r = string.byte(y, 1, 2)
+		local rot = byteToRotation[r]
+		return CFrame.fromEulerAnglesYXZ(rot.X, rot.Y, rot.Z) + byteToPosition[p]
+	end
+
+	local des = if serdes then serdes.des else Squash.number.des :: NumberDes
 	local posBytes = posBytes or 4
 
-	local rx = desAngle(string.sub(y, 1, 2))
-	local ry = desAngle(string.sub(y, 3, 4))
-	local rz = desAngle(string.sub(y, 5, 6))
+	if length == 3 then
+		return CFrame.new(des(string.sub(y, 1, 1), 1), des(string.sub(y, 2, 2), 1), des(string.sub(y, 3, 3), 1))
+	end
 
-	local px = des(string.sub(y, 7 + 0 * posBytes, 7 + 1 * posBytes - 1), posBytes)
-	local py = des(string.sub(y, 7 + 1 * posBytes, 7 + 2 * posBytes - 1), posBytes)
-	local pz = des(string.sub(y, 7 + 2 * posBytes, 7 + 3 * posBytes - 1), posBytes)
+	local px = string.sub(y, 1 + 0 * posBytes, 1 * posBytes)
+	local py = string.sub(y, 1 + 1 * posBytes, 2 * posBytes)
+	local pz = string.sub(y, 1 + 2 * posBytes, 3 * posBytes)
+	local p = Vector3.new(des(px, posBytes), des(py, posBytes), des(pz, posBytes))
 
-	return CFrame.fromOrientation(rx, ry, rz) + Vector3.new(px, py, pz)
+	if length % 2 == 0 then
+		local rx = string.sub(y, -6, -5)
+		local ry = string.sub(y, -4, -3)
+		local rz = string.sub(y, -2, -1)
+		return CFrame.fromEulerAnglesYXZ(desAngle(rx), desAngle(ry), desAngle(rz)) + p
+	end
+
+	local rot = byteToRotation[string.byte(y)]
+	return CFrame.fromEulerAnglesYXZ(rot.X, rot.Y, rot.Z) + p
 end
 
 --[=[
@@ -1080,18 +1209,20 @@ end
 	@param posBytes number?
 	@return string
 ]=]
-Squash.CFrame.serarr = serArrayVector(Squash.CFrame)
+Squash.CFrame.serarr = function(x: { CFrame }, serdes: NumberDes?, posBytes: number?) end
 
 --[=[
 	@within CFrame
 	@function desarr
 	@param y string
-	@param posBytes number
 	@param serdes NumberSerDes?
+	@param posBytes number
 	@return { CFrame }
 ]=]
-Squash.CFrame.desarr = function(y: string, posBytes: number, serdes: NumberSerDes?): { CFrame }
-	local decoding = serdes or Squash.int
+Squash.CFrame.desarr = function(y: string, serdes: NumberSerDes?, posBytes: number?): { CFrame }
+	local decoding = serdes or Squash.number
+	local posBytes = posBytes or 4
+
 	local bytes = 7 + 3 * posBytes
 
 	local x = {}

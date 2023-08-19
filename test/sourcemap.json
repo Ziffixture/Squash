@@ -1,1 +1,3 @@
-{"name":"Squash","className":"DataModel","filePaths":["default.project.json"],"children":[{"name":"ServerScriptService","className":"ServerScriptService","children":[{"name":"Squash","className":"ModuleScript","filePaths":["src\\init.lua"]}]}]}
+version https://git-lfs.github.com/spec/v1
+oid sha256:84460df463b53408263319052ebd8e184302aab1917875296f1fc4bcb9ca7872
+size 244

@@ -313,7 +313,7 @@ In the special case, CFrames have rotations that are clean multiples of 90 degre
 |-|-|-|-|-|
 | 0×1b | 0×446a80 | 0×00000000 | 0×c0000000 | 0×02 |
 
-Below are all of the different axis-angle representation of the rotation matrices that map to each rotation id. We do not know why there are holes in the Ids but have verified through exhaustive testing that these are the only Ids.
+Below are all of the different rotation ids for each special rotation. We do not know why there are holes in the Ids but have verified through exhaustive testing that these are the only Ids. Below are the orientations using **EulerAnglesYXZ** in degrees. These values are supported by [Rojo's documentation of the RBXM file format](https://dom.rojo.space/binary.html#cframe). It has a slightly different format than packets, but these specific values are the same.
 
 | Id | Angle | X | Y | Z |
 |-|-|-|-|-|
