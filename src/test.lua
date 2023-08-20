@@ -150,22 +150,43 @@ test.CatalogSearchParams = function(alphabet: Squash.Alphabet)
 	)
 end
 
-test.CFrame = function(serdes: Squash.NumberSerDes)
-	local input = CFrame.fromOrientation(
-		math.random() * 2 * math.pi,
-		math.random() * 2 * math.pi,
-		math.random() * 2 * math.pi
-	) + Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * 2000
-	local midput = Squash.CFrame.ser(input, serdes)
-	local output = Squash[typeof(input)].des(midput, serdes)
+local function cframes()
+	return {
+		CFrame.identity,
+		CFrame.new(1, 0, 0),
+		CFrame.new(1, -1, 1),
+		CFrame.new(5, 0, 0),
+		-- CFrame.new(math.huge, math.huge, math.huge),
+		-- CFrame.new(math.huge / math.huge, math.huge / math.huge, math.huge / math.huge),
+		CFrame.fromEulerAnglesYXZ(math.pi, math.pi, 0),
+		CFrame.fromEulerAnglesYXZ(0, math.pi / 2, 0),
+		CFrame.fromEulerAnglesYXZ(0, math.pi / 2, 0) + Vector3.new(1, -1, 1),
+		CFrame.fromEulerAnglesYXZ(0, math.pi / 2, 0) + Vector3.new(1, -5, 1),
+		CFrame.fromEulerAnglesYXZ(math.random() * math.pi * 2, math.random() * math.pi * 2, math.random() * math.pi * 2) + Vector3.new(1, -1, 1),
+		CFrame.fromEulerAnglesYXZ(math.random() * math.pi * 2, math.random() * math.pi * 2, math.random() * math.pi * 2) + Vector3.new(1, -5, 1),
+	}
+end
 
-	warn 'CFrame'
-	print 'Midput:'
-	print(midput)
-	print 'Input:'
-	print('CFrame', input)
-	print 'Output:'
-	print('CFrame', output)
+test.CFrame = function(serdes: Squash.NumberSerDes)
+	for i = 1, 8 do
+		if i % 4 ~= 0 and serdes == Squash.number then
+			continue
+		end
+
+		for _, input in cframes() do
+			warn(`CFrame {i} posBytes`)
+			print 'Input:'
+			print('CFrame', input)
+
+			local midput = Squash.CFrame.ser(input, serdes, i)
+			local output = Squash[typeof(input)].des(midput, serdes, i)
+
+			print('Midput:' .. #midput)
+			print(midput)
+			print 'Output:'
+			print('CFrame', output)
+		end
+	end
 end
 
 test.Color3 = function(serdes: Squash.NumberSerDes)

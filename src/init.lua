@@ -362,6 +362,8 @@ local eta = pi / 2
 local tau = 2 * pi
 
 local angleRatio = 65536 / tau
+local roundingError = 1e-5
+local halfError = roundingError / 2
 
 --- Used to serialize angles in the range [0, tau) with 2 bytes
 local serAngle = function(x: number): string
@@ -417,29 +419,29 @@ end
 
 local rotationToByte = {
 	[Vector3.new(0, 0, 0)] = 0xff,
-	[Vector3.new(eta, 0, 0)] = 0x03,
-	[Vector3.new(0, pi, pi)] = 0x05,
-	[Vector3.new(-eta, 0, 0)] = 0x06,
-	[Vector3.new(0, eta, eta)] = 0x07,
-	[Vector3.new(0, eta, eta)] = 0x09,
-	[Vector3.new(0, 0, eta)] = 0x0a,
-	[Vector3.new(0, -eta, eta)] = 0x0c,
-	[Vector3.new(-eta, -eta, 0)] = 0x0d,
-	[Vector3.new(0, -eta, 0)] = 0x0e,
-	[Vector3.new(eta, -eta, 0)] = 0x10,
-	[Vector3.new(0, eta, pi)] = 0x11,
-	[Vector3.new(0, pi, 0)] = 0x14,
-	[Vector3.new(-eta, -pi, 0)] = 0x15,
-	[Vector3.new(0, 0, pi)] = 0x17,
-	[Vector3.new(eta, pi, 0)] = 0x18,
-	[Vector3.new(0, 0, -eta)] = 0x19,
-	[Vector3.new(0, -eta, -eta)] = 0x1b,
-	[Vector3.new(0, -pi, -eta)] = 0x1c,
-	[Vector3.new(0, eta, -eta)] = 0x1e,
-	[Vector3.new(eta, eta, 0)] = 0x1f,
-	[Vector3.new(0, eta, 0)] = 0x20,
-	[Vector3.new(-eta, eta, 0)] = 0x22,
-	[Vector3.new(0, -eta, pi)] = 0x23,
+	[Vector3.new(1, 0, 0)] = 0x03,
+	[Vector3.new(0, 2, 2)] = 0x05,
+	[Vector3.new(-1, 0, 0)] = 0x06,
+	[Vector3.new(0, 1, 1)] = 0x07,
+	[Vector3.new(0, 1, 1)] = 0x09,
+	[Vector3.new(0, 0, 1)] = 0x0a,
+	[Vector3.new(0, -1, 1)] = 0x0c,
+	[Vector3.new(-1, -1, 0)] = 0x0d,
+	[Vector3.new(0, -1, 0)] = 0x0e,
+	[Vector3.new(1, -1, 0)] = 0x10,
+	[Vector3.new(0, 1, 2)] = 0x11,
+	[Vector3.new(0, 2, 0)] = 0x14,
+	[Vector3.new(-1, -2, 0)] = 0x15,
+	[Vector3.new(0, 0, 2)] = 0x17,
+	[Vector3.new(1, 2, 0)] = 0x18,
+	[Vector3.new(0, 0, -1)] = 0x19,
+	[Vector3.new(0, -1, -1)] = 0x1b,
+	[Vector3.new(0, -2, -1)] = 0x1c,
+	[Vector3.new(0, 1, -1)] = 0x1e,
+	[Vector3.new(1, 1, 0)] = 0x1f,
+	[Vector3.new(0, 1, 0)] = 0x20,
+	[Vector3.new(-1, 1, 0)] = 0x22,
+	[Vector3.new(0, -1, 2)] = 0x23,
 }
 local byteToRotation = {}
 for rotation, byte in rotationToByte do
@@ -471,6 +473,7 @@ local positionToByte = {
 	[Vector3.new(1, -1, -1)] = 0x15,
 	[Vector3.new(-1, 1, -1)] = 0x16,
 	[Vector3.new(-1, -1, 1)] = 0x17,
+	[Vector3.new(1, -1, 1)] = 0x18,
 }
 
 local byteToPosition = {}
@@ -621,6 +624,8 @@ Squash.uint = {}
 	@param x number
 	@param bytes Bytes?
 	@return string
+
+	Cannot handle NaN or math.huge
 ]=]
 Squash.uint.ser = function(x: number, bytes: Bytes?): string
 	local bytes = bytes or 4
@@ -1143,11 +1148,23 @@ Squash.CFrame.ser = function(x: CFrame, serdes: NumberSerDes?, posBytes: Bytes?)
 
 	local r
 	if x.Rotation == CFrame.identity then
-		r = if posBytes ~= 1 then string.char(0xff) else ''
+		r = if posBytes ~= 1 or #p == 1 then string.char(0xff) else ''
 	else
 		local rx, ry, rz = x:ToEulerAnglesYXZ()
-		local rotationByte = rotationToByte[Vector3.new(rx, ry, rz)]
-		r = if rotationByte then string.char(rotationByte) else serAngle(rx) .. serAngle(ry) .. serAngle(rz)
+		local rrx = if (rx + halfError) % eta < roundingError then math.round(rx / eta) else rx
+		local rry = if (ry + halfError) % eta < roundingError then math.round(ry / eta) else ry
+		local rrz = if (rz + halfError) % eta < roundingError then math.round(rz / eta) else rz
+		local rotationByte = rotationToByte[Vector3.new(
+			if math.abs(rrx) == 2 then 2 else rrx,
+			if math.abs(rry) == 2 then 2 else rry,
+			if math.abs(rrz) == 2 then 2 else rrz
+		)]
+
+		if rotationByte then
+			r = string.char(rotationByte)
+		else
+			r = (if #p == 1 then '0' else '') .. serAngle(rx) .. serAngle(ry) .. serAngle(rz)
+		end
 	end
 
 	return p .. r
@@ -1168,37 +1185,59 @@ function Squash.CFrame.des(y: string, serdes: NumberSerDes?, posBytes: number?)
 
 	local length = #y
 	if length == 1 then
-		local rot = byteToRotation[string.byte(y)]
+		local rot = byteToRotation[string.byte(y)] * eta
 		return CFrame.fromEulerAnglesYXZ(rot.X, rot.Y, rot.Z)
 	end
 
 	if length == 2 then
 		local p, r = string.byte(y, 1, 2)
-		local rot = byteToRotation[r]
+		local rot = byteToRotation[r] * eta
 		return CFrame.fromEulerAnglesYXZ(rot.X, rot.Y, rot.Z) + byteToPosition[p]
 	end
 
 	local des = if serdes then serdes.des else Squash.number.des :: NumberDes
 	local posBytes = posBytes or 4
 
-	if length == 3 then
-		return CFrame.new(des(string.sub(y, 1, 1), 1), des(string.sub(y, 2, 2), 1), des(string.sub(y, 3, 3), 1))
+	if length <= 4 then
+		local p = Vector3.new(des(string.sub(y, 1, 1), 1), des(string.sub(y, 2, 2), 1), des(string.sub(y, 3, 3), 1))
+		local r = string.byte(y, 4)
+		if r then
+			local rot = byteToRotation[r] * eta
+			return CFrame.fromEulerAnglesYXZ(rot.X, rot.Y, rot.Z) + p
+		else
+			return CFrame.new(p)
+		end
 	end
 
-	local px = string.sub(y, 1 + 0 * posBytes, 1 * posBytes)
-	local py = string.sub(y, 1 + 1 * posBytes, 2 * posBytes)
-	local pz = string.sub(y, 1 + 2 * posBytes, 3 * posBytes)
-	local p = Vector3.new(des(px, posBytes), des(py, posBytes), des(pz, posBytes))
+	if length == 6 then
+		local rx = string.sub(y, 1, 2)
+		local ry = string.sub(y, 3, 4)
+		local rz = string.sub(y, 5, 6)
+		return CFrame.fromEulerAnglesYXZ(desAngle(rx), desAngle(ry), desAngle(rz))
+	end
 
-	if length % 2 == 0 then
+	local p
+	if length ~= 8 then
+		local px = string.sub(y, 1 + 0 * posBytes, 1 * posBytes)
+		local py = string.sub(y, 1 + 1 * posBytes, 2 * posBytes)
+		local pz = string.sub(y, 1 + 2 * posBytes, 3 * posBytes)
+		p = Vector3.new(des(px, posBytes), des(py, posBytes), des(pz, posBytes))
+	else
+		p = byteToPosition[string.byte(y, 1)]
+	end
+
+	local r
+	if length % 3 == 0 or length == 8 then
 		local rx = string.sub(y, -6, -5)
 		local ry = string.sub(y, -4, -3)
 		local rz = string.sub(y, -2, -1)
-		return CFrame.fromEulerAnglesYXZ(desAngle(rx), desAngle(ry), desAngle(rz)) + p
+		r = CFrame.fromEulerAnglesYXZ(desAngle(rx), desAngle(ry), desAngle(rz))
+	else
+		local rot = byteToRotation[string.byte(y, -1)] * eta
+		r = CFrame.fromEulerAnglesYXZ(rot.X, rot.Y, rot.Z)
 	end
 
-	local rot = byteToRotation[string.byte(y)]
-	return CFrame.fromEulerAnglesYXZ(rot.X, rot.Y, rot.Z) + p
+	return r + p
 end
 
 --[=[
