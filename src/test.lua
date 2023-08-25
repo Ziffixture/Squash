@@ -189,6 +189,28 @@ test.CFrame = function(serdes: Squash.NumberSerDes)
 	end
 end
 
+test.CFrameArray = function(serdes: Squash.NumberSerDes)
+	local input = cframes()
+
+	for i = 1, 8 do
+		if i % 4 ~= 0 and serdes == Squash.number then
+			continue
+		end
+
+		warn(`CFrame {i} posBytes`)
+		print 'Input:'
+		print('CFrame', cframes())
+
+		local midput = Squash.CFrame.serarr(input, serdes, i)
+		local output = Squash[typeof(input[1])].desarr(midput, serdes, i)
+
+		print('Midput:' .. #midput)
+		print(midput)
+		print 'Output:'
+		print('CFrame', output)
+	end
+end
+
 test.Color3 = function(serdes: Squash.NumberSerDes)
 	local input = Color3.new(math.random(), math.random(), math.random())
 	local midput = Squash.Color3.ser(input)

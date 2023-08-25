@@ -1248,7 +1248,24 @@ end
 	@param posBytes number?
 	@return string
 ]=]
-Squash.CFrame.serarr = function(x: { CFrame }, serdes: NumberDes?, posBytes: number?) end
+Squash.CFrame.serarr = function(x: { CFrame }, serdes: NumberSerDes?, posBytes: number?)
+	local posBytes = posBytes or 4
+
+	local ser = Squash.CFrame.ser
+	local maxSize = 3 * posBytes + 6 -- 3 position values, 3 rotation values
+	local length = #x
+
+	local out = {}
+	for i, cframe in x do
+		local y = ser(cframe, serdes, posBytes)
+		if #y < maxSize and i < length then
+			y ..= Squash.delimiter
+		end
+		table.insert(out, y)
+	end
+
+	return table.concat(out)
+end
 
 --[=[
 	@within CFrame
@@ -1259,18 +1276,32 @@ Squash.CFrame.serarr = function(x: { CFrame }, serdes: NumberDes?, posBytes: num
 	@return { CFrame }
 ]=]
 Squash.CFrame.desarr = function(y: string, serdes: NumberSerDes?, posBytes: number?): { CFrame }
-	local decoding = serdes or Squash.number
 	local posBytes = posBytes or 4
 
-	local bytes = 7 + 3 * posBytes
+	local maxSize = 3 * posBytes + 6
+	local des = Squash.CFrame.des
 
-	local x = {}
-	for i = 1, #y / bytes do
-		local a = bytes * (i - 1) + 1
-		local b = bytes * i
-		x[i] = Squash.CFrame.des(string.sub(y, a, b), decoding, posBytes)
+	local nullSplit = string.split(y, Squash.delimiter)
+	local split = {}
+	for _, str in nullSplit do
+		local length = #str
+		if length > 0 then
+			for i = 1, length, maxSize do
+				local j = math.min(length, i + maxSize - 1)
+				local sub = string.sub(str, i, j)
+				table.insert(split, sub)
+			end
+		else
+			table.insert(split, '')
+		end
 	end
-	return x
+
+	local out = table.create(#split)
+	for _, str in split do
+		table.insert(out, des(str, serdes, posBytes))
+	end
+
+	return out
 end
 
 --[=[
